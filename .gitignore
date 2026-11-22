@@ -1,0 +1,31 @@
+# Node.js
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Java / Maven
+backend/target/
+*.class
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Runtime data and uploads
+backend/data/
+backend/uploads/
+backend/logs/
+data/
+uploads/
+logs/
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Operating system
+.DS_Store
+Thumbs.db

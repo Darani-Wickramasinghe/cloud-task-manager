@@ -1,0 +1,11 @@
+package com.codomax.taskmanager;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class CloudTaskManagerApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(CloudTaskManagerApplication.class, args);
+    }
+}

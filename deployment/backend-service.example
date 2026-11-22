@@ -1,0 +1,20 @@
+[Unit]
+Description=Cloud Task Manager API
+After=network.target
+
+[Service]
+Type=simple
+User=azureuser
+WorkingDirectory=/opt/cloud-task-manager/backend
+Environment=SPRING_PROFILES_ACTIVE=prod,azure
+Environment=AZURE_STORAGE_ENABLED=true
+Environment=AZURE_STORAGE_ACCOUNT_NAME=codomaxmodule03storage
+Environment=AZURE_STORAGE_CONTAINER_NAME=app-uploads
+Environment=APP_CORS_ALLOWED_ORIGIN=http://20.2.80.155
+Environment=SERVER_PORT=8080
+ExecStart=/usr/bin/java -jar /opt/cloud-task-manager/backend/cloud-task-manager-api.jar
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
