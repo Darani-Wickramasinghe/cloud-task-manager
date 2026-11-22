@@ -1,123 +1,235 @@
 # Cloud Task Manager
 
-A starter full-stack task management application for Azure deployment.
+A full-stack cloud-based task management application developed using React, TypeScript, Java Spring Boot, and Microsoft Azure. The application allows users to manage tasks and upload attachments, with files stored securely in Azure Blob Storage.
+
+## Live Application
+
+**Application URL:** http://20.2.80.155
+
+The application is hosted on an Ubuntu Linux virtual machine in Microsoft Azure.
+
+> Note: The current demonstration deployment uses HTTP. HTTPS and authentication should be configured before using the application for sensitive or real-world data.
 
 ## Features
-- Create, view, edit, complete, and delete tasks
-- Task status and priority
-- Optional due dates
-- Upload one attachment per task
-- Local file storage for development
-- Azure Blob Storage using Managed Identity in Azure
-- H2 file-based database for a lightweight initial deployment
 
-## Technology
-- Frontend: React + TypeScript + Vite
-- Backend: Java 21 + Spring Boot 3.5 + Spring Data JPA
-- Database: H2 file database
-- Object storage: Azure Blob Storage
-- Hosting: Ubuntu VM + Nginx
+- Create, view, edit, and delete tasks
+- Mark tasks as completed
+- Manage task status and priority
+- Set optional task due dates
+- Upload attachments to tasks
+- Store development attachments locally
+- Store Azure deployment attachments in Azure Blob Storage
+- Use Managed Identity for Azure Storage authentication
+- REST API for task management
+- Health-check endpoint for monitoring
 
-## Project structure
-- `frontend/` - React application
-- `backend/` - Spring Boot REST API
+## Technology Stack
 
-## Requirements
+| Component | Technology |
+|---|---|
+| Frontend | React, TypeScript, Vite |
+| Backend | Java 21, Spring Boot 3.5 |
+| API | Spring Boot REST API |
+| Database | H2 file-based database |
+| Object Storage | Azure Blob Storage |
+| Authentication to Azure Storage | System-assigned Managed Identity |
+| Web Server | Nginx |
+| Hosting | Azure Ubuntu Linux VM |
+| Version Control | Git and GitHub |
+
+## System Architecture
+
+1. Users access the React frontend through a web browser.
+2. Nginx serves the frontend application.
+3. Nginx forwards `/api/` requests to the Spring Boot backend.
+4. The backend processes task management requests.
+5. Task information is stored in the H2 file-based database on the VM.
+6. Attachments are stored in Azure Blob Storage.
+7. The Azure VM uses its system-assigned Managed Identity to access Blob Storage.
+
+## Project Structure
+
+```text
+cloud-task-manager/
+├── frontend/       # React + TypeScript application
+├── backend/        # Spring Boot REST API
+├── deployment/     # Nginx and systemd configuration examples
+├── .gitignore
+└── README.md
+```
+
+## Requirements for Local Development
+
 - Java 21
 - Maven 3.9+
 - Node.js 20+ and npm
 - Git
 
-## 1. Run the backend locally
+## Run the Backend Locally
 
-Open PowerShell in the `backend` directory:
+Open a terminal in the `backend` directory.
 
-```powershell
+```bash
 mvn spring-boot:run
 ```
 
-Backend URL: `http://localhost:8080`
+Backend URL:
 
-Health check: `http://localhost:8080/api/health`
+`http://localhost:8080`
 
-The local H2 database is stored under `backend/data/`.
-For local development, attachments are stored under `backend/uploads/`.
+Health check:
 
-## 2. Run the frontend locally
+`http://localhost:8080/api/health`
 
-Open another PowerShell window in `frontend`:
+The local H2 database and uploaded files are stored under the backend directory.
 
-```powershell
+## Run the Frontend Locally
+
+Open another terminal in the `frontend` directory.
+
+Install dependencies:
+
+```bash
 npm install
+```
+
+Start the development server:
+
+```bash
 npm run dev
 ```
 
-Open the Vite URL shown in the terminal, normally `http://localhost:5173`.
+Open the Vite URL shown in the terminal, normally:
 
-The frontend uses `VITE_API_BASE_URL`, defaulting to `http://localhost:8080/api`.
+`http://localhost:5173`
 
-## 3. Azure Blob Storage configuration
+The frontend uses `VITE_API_BASE_URL` to connect to the backend. Its default development URL is `http://localhost:8080/api`.
 
-The application uses local file storage by default. To use Azure Blob Storage, set these environment variables for the backend:
+## Azure Deployment
 
-```text
-AZURE_STORAGE_ENABLED=true
+The application is deployed using the following Azure services and components:
+
+- Azure Virtual Machine running Ubuntu Server 24.04
+- Nginx for frontend hosting and API reverse proxy
+- Spring Boot backend running as a systemd service
+- Azure Blob Storage for uploaded attachments
+- System-assigned Managed Identity for secure storage access
+
+### Azure Blob Storage Configuration
+
+The Azure deployment uses the `azure` Spring profile.
+
+The following environment variables are configured on the VM:
+
+```bash
+SPRING_PROFILES_ACTIVE=prod,azure
 AZURE_STORAGE_ACCOUNT_NAME=codomaxmodule03storage
 AZURE_STORAGE_CONTAINER_NAME=app-uploads
 ```
 
-The backend creates a Blob client using Azure `DefaultAzureCredential`.
-- On your Azure VM, this uses the VM's system-assigned Managed Identity.
-- Locally, it can use an authenticated Azure CLI session (`az login`).
+The VM's system-assigned Managed Identity has the **Storage Blob Data Contributor** role on the storage account.
 
-The VM Managed Identity needs the **Storage Blob Data Contributor** role on the storage account or container.
+The application uses Azure Default Credential authentication rather than storing storage account keys in source code.
 
-Do not put storage account keys, passwords, or access tokens in source code or GitHub.
+The Blob Storage container is private.
 
-## 4. Build frontend for production
+### Backend Service
 
-In `frontend`:
+The Spring Boot backend runs as a Linux systemd service named:
 
-```powershell
+`cloud-task-manager`
+
+Useful commands on the VM:
+
+Check service status:
+
+```bash
+sudo systemctl status cloud-task-manager
+```
+
+Restart the backend:
+
+```bash
+sudo systemctl restart cloud-task-manager
+```
+
+View backend logs:
+
+```bash
+sudo journalctl -u cloud-task-manager -n 50 --no-pager
+```
+
+### Nginx Configuration
+
+Nginx serves the frontend production build from:
+
+`/opt/cloud-task-manager`
+
+It also forwards API requests to the backend running on:
+
+`127.0.0.1:8080`
+
+A sample configuration is available in:
+
+`deployment/nginx-cloud-task-manager.conf`
+
+## Build for Production
+
+### Build the Frontend
+
+From the `frontend` directory:
+
+```bash
 npm install
 npm run build
 ```
 
-The production files are generated in `frontend/dist/`.
+The production files are generated in:
 
-Upload the contents of `dist/` to the VM's Nginx web root (commonly `/var/www/html/`).
-Configure Nginx to serve the React app and proxy `/api/` requests to the backend on `127.0.0.1:8080`.
+`frontend/dist/`
 
-A sample Nginx configuration is in `deployment/nginx-cloud-task-manager.conf`.
+### Build the Backend
 
-## 5. Backend production settings
-
-Set these environment variables on the VM before starting the backend:
+From the `backend` directory:
 
 ```bash
-export SPRING_PROFILES_ACTIVE=prod
-export AZURE_STORAGE_ENABLED=true
-export AZURE_STORAGE_ACCOUNT_NAME=codomaxmodule03storage
-export AZURE_STORAGE_CONTAINER_NAME=app-uploads
-export SERVER_PORT=8080
+mvn clean package
 ```
 
-The `prod` profile uses the same H2 file database by default. This is suitable for a small demonstration, not a high-availability production system. Back up the H2 data directory. For a production system, migrate to a managed database such as Azure Database for PostgreSQL or MySQL after checking student-credit costs.
+The executable JAR is generated in:
 
-## API endpoints
+`backend/target/`
+
+## REST API Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `/api/health` | Health check |
-| GET | `/api/tasks` | List tasks |
-| POST | `/api/tasks` | Create task |
-| GET | `/api/tasks/{id}` | Get one task |
-| PUT | `/api/tasks/{id}` | Update task |
-| PATCH | `/api/tasks/{id}/complete` | Mark task completed |
-| DELETE | `/api/tasks/{id}` | Delete task |
-| POST | `/api/tasks/{id}/attachment` | Upload attachment (multipart field `file`) |
+| GET | `/api/tasks` | Retrieve all tasks |
+| POST | `/api/tasks` | Create a task |
+| GET | `/api/tasks/{id}` | Retrieve a task |
+| PUT | `/api/tasks/{id}` | Update a task |
+| PATCH | `/api/tasks/{id}/complete` | Mark a task as completed |
+| DELETE | `/api/tasks/{id}` | Delete a task |
+| POST | `/api/tasks/{id}/attachment` | Upload a task attachment |
 
-## Notes
-- This is a starter project. Add authentication and authorization before exposing it publicly.
-- The initial H2 database is intentionally lightweight. It is not a substitute for a managed database in a production deployment.
-- Azure Blob uploads are private; the API stores the blob name and returns the blob URL. Do not make the container public.
+For attachment uploads, use the multipart form field `file`.
+
+## Security and Deployment Notes
+
+- Azure Blob Storage access uses Managed Identity.
+- Storage account keys and passwords must not be committed to GitHub.
+- The Blob Storage container is private.
+- The H2 database is stored on the Azure VM; it is not an Azure managed database.
+- The current deployment uses HTTP and does not include application-level user authentication.
+- Authentication, authorization, HTTPS, database backups, and production monitoring should be added before real-world production use.
+
+## GitHub Repository
+
+Source code:
+
+https://github.com/Darani-Wickramasinghe/cloud-task-manager
+
+## Project Status
+
+The application has been built, tested locally, deployed to an Azure Linux VM, and integrated with Azure Blob Storage using Managed Identity.
