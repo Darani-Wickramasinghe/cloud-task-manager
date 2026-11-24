@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   backend-build:
@@ -27,6 +28,12 @@ jobs:
       - name: Build and test backend
         working-directory: backend
         run: mvn -B clean verify
+
+      - name: Upload backend JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jar
+          path: backend/target/cloud-task-manager-api-0.0.1-SNAPSHOT.jar
 
   frontend-build:
     name: Frontend Build
@@ -51,6 +58,12 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Upload frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+
 
   docker-build:
     name: Docker Image Build
@@ -68,3 +81,146 @@ jobs:
 
       - name: Build frontend Docker image
         run: docker build -t cloud-task-manager-frontend:latest ./frontend
+
+
+  deploy-to-azure:
+    name: Deploy to Azure VM
+    runs-on: ubuntu-latest
+    needs:
+      - backend-build
+      - frontend-build
+      - docker-build
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Download backend JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-jar
+          path: artifacts/backend
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: artifacts/frontend
+
+      - name: Configure SSH
+        env:
+          AZURE_SSH_PRIVATE_KEY: ${{ secrets.AZURE_SSH_PRIVATE_KEY }}
+          AZURE_KNOWN_HOSTS: ${{ secrets.AZURE_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$AZURE_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$AZURE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Copy deployment files to Azure
+        env:
+          AZURE_VM_HOST: ${{ secrets.AZURE_VM_HOST }}
+          AZURE_VM_USER: ${{ secrets.AZURE_VM_USER }}
+          DEPLOY_ID: ${{ github.sha }}
+        run: |
+          DEPLOY_DIR="/home/$AZURE_VM_USER/cloud-task-manager-deploy-$DEPLOY_ID"
+
+          ssh -i ~/.ssh/id_ed25519 "$AZURE_VM_USER@$AZURE_VM_HOST" \
+            "mkdir -p '$DEPLOY_DIR'"
+
+          scp -i ~/.ssh/id_ed25519 \
+            artifacts/backend/cloud-task-manager-api-0.0.1-SNAPSHOT.jar \
+            "$AZURE_VM_USER@$AZURE_VM_HOST:$DEPLOY_DIR/app.jar"
+
+          scp -i ~/.ssh/id_ed25519 \
+            artifacts/frontend/index.html \
+            "$AZURE_VM_USER@$AZURE_VM_HOST:$DEPLOY_DIR/index.html"
+
+          scp -i ~/.ssh/id_ed25519 -r \
+            artifacts/frontend/assets \
+            "$AZURE_VM_USER@$AZURE_VM_HOST:$DEPLOY_DIR/assets"
+
+      - name: Back up and deploy application
+        env:
+          AZURE_VM_HOST: ${{ secrets.AZURE_VM_HOST }}
+          AZURE_VM_USER: ${{ secrets.AZURE_VM_USER }}
+          DEPLOY_ID: ${{ github.sha }}
+        run: |
+          DEPLOY_DIR="/home/$AZURE_VM_USER/cloud-task-manager-deploy-$DEPLOY_ID"
+
+          ssh -i ~/.ssh/id_ed25519 "$AZURE_VM_USER@$AZURE_VM_HOST" \
+            "DEPLOY_DIR='$DEPLOY_DIR' DEPLOY_ID='$DEPLOY_ID' bash -s" <<'REMOTE'
+          set -e
+
+          APP_DIR="/opt/cloud-task-manager"
+          BACKUP_DIR="$APP_DIR/backups/$(date +%Y%m%d-%H%M%S)-$DEPLOY_ID"
+          JAR_NAME="cloud-task-manager-api-0.0.1-SNAPSHOT.jar"
+
+          test -f "$DEPLOY_DIR/app.jar"
+          test -f "$DEPLOY_DIR/index.html"
+          test -d "$DEPLOY_DIR/assets"
+
+          test -f "$APP_DIR/$JAR_NAME"
+          test -f "$APP_DIR/index.html"
+          test -d "$APP_DIR/assets"
+
+          mkdir -p "$BACKUP_DIR"
+
+          cp "$APP_DIR/$JAR_NAME" "$BACKUP_DIR/$JAR_NAME"
+          cp "$APP_DIR/index.html" "$BACKUP_DIR/index.html"
+          cp -a "$APP_DIR/assets" "$BACKUP_DIR/assets"
+
+          rollback() {
+            echo "Deployment failed. Restoring previous application."
+
+            cp "$BACKUP_DIR/$JAR_NAME" "$APP_DIR/$JAR_NAME"
+            cp "$BACKUP_DIR/index.html" "$APP_DIR/index.html"
+            rm -rf "$APP_DIR/assets"
+            cp -a "$BACKUP_DIR/assets" "$APP_DIR/assets"
+
+            sudo -n systemctl restart cloud-task-manager
+            exit 1
+          }
+
+          if ! {
+            install -m 644 "$DEPLOY_DIR/app.jar" "$APP_DIR/$JAR_NAME.new"
+            mv "$APP_DIR/$JAR_NAME.new" "$APP_DIR/$JAR_NAME"
+
+            cp -a "$DEPLOY_DIR/assets/." "$APP_DIR/assets/"
+
+            install -m 644 "$DEPLOY_DIR/index.html" "$APP_DIR/index.html.new"
+            mv "$APP_DIR/index.html.new" "$APP_DIR/index.html"
+
+            sudo -n systemctl restart cloud-task-manager
+          }; then
+            rollback
+          fi
+
+          HEALTHY=0
+
+          for attempt in $(seq 1 12); do
+            if curl -fsS http://127.0.0.1:8080/api/health >/dev/null &&
+               curl -fsS http://127.0.0.1/ >/dev/null; then
+              HEALTHY=1
+              break
+            fi
+
+            sleep 5
+          done
+
+          if [ "$HEALTHY" -ne 1 ]; then
+            rollback
+          fi
+
+          echo "Deployment successful."
+          echo "Backup saved at: $BACKUP_DIR"
+          REMOTE
+
+      - name: Clean up deployment staging files
+        if: success()
+        env:
+          AZURE_VM_HOST: ${{ secrets.AZURE_VM_HOST }}
+          AZURE_VM_USER: ${{ secrets.AZURE_VM_USER }}
+          DEPLOY_ID: ${{ github.sha }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "$AZURE_VM_USER@$AZURE_VM_HOST" \
+            "rm -rf '/home/$AZURE_VM_USER/cloud-task-manager-deploy-$DEPLOY_ID'"
