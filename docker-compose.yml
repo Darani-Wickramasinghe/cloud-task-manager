@@ -1,0 +1,32 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cloud-task-manager-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8080
+      LOCAL_UPLOAD_DIRECTORY: uploads
+      APP_CORS_ALLOWED_ORIGIN: http://localhost:8080
+    volumes:
+      - task-data:/app/data
+      - task-uploads:/app/uploads
+    expose:
+      - "8080"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cloud-task-manager-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  task-data:
+  task-uploads:
