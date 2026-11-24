@@ -1,0 +1,21 @@
+name: Cloud Task Manager Health Monitoring
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Check Azure application health
+        run: |
+          response=$(curl -fsS --max-time 15 http://20.2.80.155/api/health)
+          echo "Health check response:"
+          echo "$response"
+
+          echo "$response" | grep -q '"status":"UP"'
+          echo "Application is healthy!"
