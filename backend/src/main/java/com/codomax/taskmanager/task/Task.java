@@ -3,6 +3,8 @@ package com.codomax.taskmanager.task;
 import jakarta.persistence.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
+
 
 @Entity
 @Table(name = "tasks")
@@ -30,6 +32,9 @@ public class Task {
     private String attachmentBlobName;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    @Column(name = "owner_id")
+    private UUID ownerId;
 
     @PrePersist
     void onCreate() {
@@ -61,4 +66,12 @@ public class Task {
     public void setAttachmentBlobName(String attachmentBlobName) { this.attachmentBlobName = attachmentBlobName; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
+
+    public UUID getOwnerId() {
+    return ownerId;
+}
+
+    public void setOwnerId(UUID ownerId) {
+    this.ownerId = ownerId;
+}
 }

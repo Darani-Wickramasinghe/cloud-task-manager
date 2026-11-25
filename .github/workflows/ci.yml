@@ -56,6 +56,10 @@ jobs:
 
       - name: Build frontend
         working-directory: frontend
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_API_BASE_URL: /api
         run: npm run build
 
       - name: Upload frontend build
@@ -165,19 +169,30 @@ jobs:
 
           mkdir -p "$BACKUP_DIR"
 
+          test -f /etc/systemd/system/cloud-task-manager.service.d/override.conf.backup
+
+          sudo -n cp \
+            /etc/systemd/system/cloud-task-manager.service.d/override.conf.backup \
+            "$BACKUP_DIR/override.conf"
+
           cp "$APP_DIR/$JAR_NAME" "$BACKUP_DIR/$JAR_NAME"
           cp "$APP_DIR/index.html" "$BACKUP_DIR/index.html"
           cp -a "$APP_DIR/assets" "$BACKUP_DIR/assets"
 
           rollback() {
-            echo "Deployment failed. Restoring previous application."
+            echo "Deployment failed. Restoring previous application and service configuration."
 
             cp "$BACKUP_DIR/$JAR_NAME" "$APP_DIR/$JAR_NAME"
             cp "$BACKUP_DIR/index.html" "$APP_DIR/index.html"
             rm -rf "$APP_DIR/assets"
             cp -a "$BACKUP_DIR/assets" "$APP_DIR/assets"
 
+            sudo -n install -m 644 "$BACKUP_DIR/override.conf" \
+              /etc/systemd/system/cloud-task-manager.service.d/override.conf
+
+            sudo -n systemctl daemon-reload
             sudo -n systemctl restart cloud-task-manager
+
             exit 1
           }
 
@@ -190,6 +205,7 @@ jobs:
             install -m 644 "$DEPLOY_DIR/index.html" "$APP_DIR/index.html.new"
             mv "$APP_DIR/index.html.new" "$APP_DIR/index.html"
 
+            sudo -n systemctl daemon-reload
             sudo -n systemctl restart cloud-task-manager
           }; then
             rollback
